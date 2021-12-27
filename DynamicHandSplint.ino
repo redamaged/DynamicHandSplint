@@ -17,8 +17,6 @@ WiFiServer server(80);              // Web server on port 80 (http)
 String header;                      // Variable to store the HTTP request
 
 // Decode HTTP GET value
-bool sweepEanble= false;
-bool ledState= false;
 String valueString = String(5);
 int pos1 = 0;
 int pos2 = 0;
@@ -26,6 +24,8 @@ int pos2 = 0;
 int motor_current_pos =0;
 int motor_min_pos=90;
 int motor_max_pos=120;
+int duration_hold = 6000;
+int duration_rest = 3000;
 
 // Current time
 unsigned long currentTime = millis();
@@ -52,9 +52,9 @@ void TaskBlink(void *pvParameters)  // This is a task.
     {
       case BLINK:
         digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-        vTaskDelay(150);  // one tick delay (15ms) in between reads for stability
+        vTaskDelay(850);  // one tick delay (15ms) in between reads for stability
         digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
-        vTaskDelay(50);  // one tick delay (15ms) in between reads for stability
+        vTaskDelay(150);  // one tick delay (15ms) in between reads for stability
         break;
       case ON:
         digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
@@ -95,6 +95,12 @@ void TaskMotor(void *pvParameters)  // This is a task.
             break;
           vTaskDelay(1000); 
         }
+        for(int s= 0; s< duration_hold; s++) {
+          if(motor_status== SWEEP)
+            vTaskDelay(1); 
+          else
+            break;
+        }
         for (int pos = motor_max_pos; pos >= motor_min_pos; pos -= 1) {
           if(motor_status== SWEEP)
             myservo.write(pos);   
@@ -102,6 +108,12 @@ void TaskMotor(void *pvParameters)  // This is a task.
             break;  
           vTaskDelay(50); 
         } 
+        for(int s= 0; s< duration_rest; s++) {
+          if(motor_status== SWEEP)
+            vTaskDelay(1); 
+          else
+            break;
+        }
         break;
       case EMERGENCY_STOP:
         myservo.detach(); 
@@ -158,8 +170,6 @@ void TaskWebServer(void *pvParameters)  // This is a task.
                 valueString = header.substring(pos1+1, pos2);
                 
                 // Move servo into position
-                sweepEanble = false;
-                led_status= ON;
                 led_status= ON;
                 motor_current_pos = valueString.toInt();
                 motor_status= MANUAL;
@@ -172,29 +182,24 @@ void TaskWebServer(void *pvParameters)  // This is a task.
   
               if (header.indexOf("GET /on") >= 0) {
                 Serial.println("Sweep on");
-                sweepEanble = true;
                 led_status= BLINK;
                 motor_status = SWEEP;
               } else if (header.indexOf("GET /off") >= 0) {
                 Serial.println("Sweep off");
-                sweepEanble = false;
                  led_status= ON;
                   motor_status = STOP;
               }else if(header.indexOf("GET /cal_min") >= 0) {
                 Serial.println("callibrate minimum");
-                sweepEanble = false;
                  led_status= ON;
                   motor_status = STOP;
                   motor_min_pos=valueString.toInt();                
               }else if(header.indexOf("GET /cal_max") >= 0) {
                 Serial.println("callibrate maximum");
-                sweepEanble = false;
                  led_status= ON;
                   motor_status = STOP;
                   motor_max_pos=valueString.toInt();                
               }else if(header.indexOf("GET /emergency") >= 0) {
                 Serial.println("Emergency STOP");
-                sweepEanble = false;
                  led_status= OFF;
                   motor_status = EMERGENCY_STOP;              
               }
@@ -229,10 +234,11 @@ void TaskWebServer(void *pvParameters)  // This is a task.
               client.println("<input type=\"range\" min=\"0\" max=\"180\" class=\"slider\" id=\"servoSlider\" onchange=\"servo(this.value)\" value=\""+valueString+"\"/>");
   
               // Button ON/Off control
-              if (sweepEanble==false)
-                client.println("<p><a href=\"/on\"><button class=\"button\">START</button></a></p>");
-              else  
+              if (motor_status==SWEEP)
                 client.println("<p><a href=\"/off\"><button class=\"button button2\">STOP</button></a></p>");
+              else  
+                client.println("<p><a href=\"/on\"><button class=\"button\">START</button></a></p>");
+              
               
               // Button Callibrate Min
               client.println("<p><a href=\"/cal_min\"><button class=\"button\">Callibrate min</button></a></p>");
